@@ -17,24 +17,34 @@ const DEFAULT_PARAMETERS = {
 	shape_step_length_divs = 1,
 	shape_step_width_divs = 1,
 	shape_smoothness = 0.5,
-	mat_flow_speed = 1.0,
-	mat_tiling = 1.0,
+	mat_uv_tiling = Vector2(1.0, 1.0),
 	mat_normal_scale = 1.0,
 	mat_clarity = 10.0,
-	mat_albedo = Color(0.3, 0.25, 0.2, 1.0),
+	mat_edge_fade = 0.25,
+	mat_gradient_depth = 10.0,
 	mat_roughness = 0.2,
 	mat_refraction = 0.05,
+	mat_flow_speed = 1.0,
+	mat_flow_base_strength = 0.0,
+	mat_flow_steepness_strength = 2.0,
+	mat_flow_distance_strength = 1.0,
+	mat_flow_pressure_strength = 1.0,
+	mat_flow_max_strength = 4.0,
 	mat_foam_albedo = Color(0.9, 0.9, 0.9, 1.0),
 	mat_foam_amount = 2.0,
-	mat_foam_smoothness = 1.0,
+	mat_foam_steepness = 2.0,
+	mat_foam_smoothness = 0.3,
 	lod_lod0_distance = 50.0,
-	baking_resolution = 2,
+	baking_resolution = 2, 
+	baking_raycast_distance = 10.0,
 	baking_dilate = 0.6,
 	baking_flowmap_blur = 0.04,
 	baking_foam_cutoff = 0.9,
 	baking_foam_offset = 0.1,
-	baking_foam_blur = 0.02
+	baking_foam_blur = 0.02,
+	adv_custom_shader = null
 }
+
 
 # Shape Properties
 var shape_step_length_divs := 1 setget set_step_length_divs
@@ -42,28 +52,42 @@ var shape_step_width_divs := 1 setget set_step_width_divs
 var shape_smoothness := 0.5 setget set_smoothness
 
 # Material Properties
-var mat_flow_speed := 1.0 setget set_flowspeed
 var mat_texture : Texture setget set_texture
-var mat_tiling := 1.0 setget set_tiling
+var mat_uv_scale := Vector3(1.0, 1.0, 1.0) setget set_uv_scale
 var mat_normal_scale := 1.0 setget set_normal_scale
 var mat_clarity := 10.0 setget set_clarity
-var mat_albedo := Color(0.3, 0.25, 0.2, 1.0) setget set_albedo
+var mat_edge_fade := 0.25 setget set_edge_fade
+var mat_albedo : PoolColorArray
+var mat_albedo1 := Color(0.3, 0.25, 0.2, 1.0) setget set_albedo1
+var mat_albedo2 := Color(0.3, 0.25, 0.2, 1.0) setget set_albedo2
+var mat_gradient_depth := 10.0 setget set_gradient_depth
 var mat_roughness := 0.2 setget set_roughness
 var mat_refraction := 0.05 setget set_refraction
+var mat_flow_speed := 1.0 setget set_flowspeed
+var mat_flow_base_strength := 0.0 setget set_flow_base
+var mat_flow_steepness_strength := 2.0 setget set_flow_steepness
+var mat_flow_distance_strength := 1.0 setget set_flow_distance
+var mat_flow_pressure_strength := 1.0 setget set_flow_pressure
+var mat_flow_max_strength := 4.0 setget set_flow_max
 var mat_foam_albedo := Color(0.9, 0.9, 0.9, 1.0) setget set_foam_albedo
 var mat_foam_amount := 2.0 setget set_foam_amount
-var mat_foam_smoothness := 1.0 setget set_foam_smoothness
+var mat_foam_steepness := 2.0 setget set_foam_steepness
+var mat_foam_smoothness := 0.3 setget set_foam_smoothness
 
 # LOD Properties
 var lod_lod0_distance := 50.0 setget set_lod0_distance
 
 # Bake Properties
 var baking_resolution := 2
+var baking_raycast_distance := 10.0
 var baking_dilate := 0.6
 var baking_flowmap_blur := 0.04
 var baking_foam_cutoff := 0.9
 var baking_foam_offset := 0.1
 var baking_foam_blur := 0.02
+
+# Advanced Properties
+var adv_custom_shader : Shader setget set_custom_shader
 
 # Public variables
 var curve : Curve3D
@@ -83,6 +107,7 @@ var _debug_material : ShaderMaterial
 var _first_enter_tree := true
 var _filter_renderer
 var _flow_foam_noise : Texture
+var _dist_pressure : Texture
 
 # river_chaged used to update handles when values are changed on script side
 # progress_notified used to up progress bar when baking maps
@@ -126,13 +151,6 @@ func _get_property_list() -> Array:
 			usage = PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
 		{
-			name = "mat_flow_speed",
-			type = TYPE_REAL,
-			hint = PROPERTY_HINT_RANGE,
-			hint_string = "0.0, 10.0",
-			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
-		},
-		{
 			name = "mat_texture",
 			type = TYPE_OBJECT,
 			hint = PROPERTY_HINT_RESOURCE_TYPE,
@@ -140,10 +158,9 @@ func _get_property_list() -> Array:
 			hint_string = "Texture"
 		},
 		{
-			name = "mat_tiling",
-			type = TYPE_REAL,
-			hint = PROPERTY_HINT_RANGE,
-			hint_string = "1.0, 20.0",
+			name = "mat_uv_scale",
+			type = TYPE_VECTOR3,
+			hint = PROPERTY_HINT_NONE,
 			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
 		{
@@ -155,8 +172,14 @@ func _get_property_list() -> Array:
 		},
 		{
 			name = "mat_albedo",
-			type = TYPE_COLOR,
-			hint = PROPERTY_HINT_COLOR_NO_ALPHA,
+			type = TYPE_COLOR_ARRAY,
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_gradient_depth",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 200.0",
 			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
 		{
@@ -164,6 +187,13 @@ func _get_property_list() -> Array:
 			type = TYPE_REAL,
 			hint = PROPERTY_HINT_RANGE,
 			hint_string = "0.0, 200.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_edge_fade",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 1.0",
 			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
 		{
@@ -181,6 +211,60 @@ func _get_property_list() -> Array:
 			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
 		{
+			name = "Material/Flow",
+			type = TYPE_NIL,
+			hint_string = "mat_flow_",
+			usage = PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_flow_speed",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 10.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_flow_base_strength",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 8.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_flow_steepness_strength",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 8.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_flow_distance_strength",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 8.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_flow_pressure_strength",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 8.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_flow_max_strength",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 8.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "Material/Foam",
+			type = TYPE_NIL,
+			hint_string = "mat_foam_",
+			usage = PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
 			name = "mat_foam_albedo",
 			type = TYPE_COLOR,
 			hint = PROPERTY_HINT_COLOR_NO_ALPHA,
@@ -191,6 +275,13 @@ func _get_property_list() -> Array:
 			type = TYPE_REAL,
 			hint = PROPERTY_HINT_RANGE,
 			hint_string = "0.0, 4.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "mat_foam_steepness",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 8.0",
 			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
 		{
@@ -227,10 +318,17 @@ func _get_property_list() -> Array:
 			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
 		{
+			name = "baking_raycast_distance",
+			type = TYPE_REAL,
+			hint = PROPERTY_HINT_RANGE,
+			hint_string = "0.0, 100.0",
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
 			name = "baking_dilate",
 			type = TYPE_REAL,
 			hint = PROPERTY_HINT_RANGE,
-			hint_string = "0.0, 2.0",
+			hint_string = "0.0, 1.0",
 			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
 		{
@@ -261,7 +359,32 @@ func _get_property_list() -> Array:
 			hint_string = "0.0, 1.0",
 			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE
 		},
+		{
+			name = "Advanced",
+			type = TYPE_NIL,
+			hint_string = "adv_",
+			usage = PROPERTY_USAGE_GROUP | PROPERTY_USAGE_SCRIPT_VARIABLE
+		},
+		{
+			name = "adv_custom_shader",
+			type = TYPE_OBJECT,
+			hint = PROPERTY_HINT_RESOURCE_TYPE,
+			usage = PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_SCRIPT_VARIABLE,
+			hint_string = "Shader"
+		},
 		# Serialize these values without exposing it in the inspector
+		{
+			name = "mat_albedo1",
+			type = TYPE_COLOR,
+			hint = PROPERTY_HINT_COLOR_NO_ALPHA,
+			usage = PROPERTY_USAGE_STORAGE
+		},
+		{
+			name = "mat_albedo2",
+			type = TYPE_COLOR,
+			hint = PROPERTY_HINT_COLOR_NO_ALPHA,
+			usage = PROPERTY_USAGE_STORAGE
+		},
 		{
 			name = "curve",
 			type = TYPE_OBJECT,
@@ -274,6 +397,11 @@ func _get_property_list() -> Array:
 		},
 		{
 			name = "_flow_foam_noise",
+			type = TYPE_OBJECT,
+			usage = PROPERTY_USAGE_STORAGE
+		},
+		{
+			name = "_dist_pressure",
 			type = TYPE_OBJECT,
 			usage = PROPERTY_USAGE_STORAGE
 		},
@@ -335,9 +463,11 @@ func _enter_tree() -> void:
 		_material = _mesh_instance.mesh.surface_get_material(0) as ShaderMaterial
 	
 	set_materials("valid_flowmap", valid_flowmap)
+	set_materials("distmap", _dist_pressure)
 	set_materials("flowmap", _flow_foam_noise)
 	# If a value is not set on the material, the values are not correct
-	set_albedo(mat_albedo) 
+	set_albedo1(mat_albedo1)
+	set_albedo2(mat_albedo2)
 
 
 func _get_configuration_warning() -> String:
@@ -425,6 +555,7 @@ func spawn_mesh() -> void:
 	get_parent().add_child(sibling_mesh)
 	sibling_mesh.set_owner(get_tree().get_edited_scene_root())
 	sibling_mesh.translation = translation
+	sibling_mesh.material_override = null;
 
 
 func get_curve_points() -> PoolVector3Array:
@@ -479,9 +610,19 @@ func set_smoothness(value : float) -> void:
 	emit_signal("river_changed")
 
 
-func set_albedo(color : Color) -> void:
-	mat_albedo = color
-	set_materials("albedo", color)
+func set_albedo1(color : Color) -> void:
+	mat_albedo1 = color
+	set_materials("albedo1", color)
+
+
+func set_albedo2(color : Color) -> void:
+	mat_albedo2 = color
+	set_materials("albedo2", color)
+
+
+func set_gradient_depth(value : float) -> void:
+	mat_gradient_depth = value
+	set_materials("gradient_depth", value)
 
 
 func set_foam_albedo(color : Color) -> void:
@@ -494,9 +635,29 @@ func set_foam_amount(amount : float) -> void:
 	set_materials("foam_amount", amount)
 
 
+func set_foam_steepness(amount : float) -> void:
+	mat_foam_steepness = amount
+	set_materials("foam_steepness", amount)
+
+
 func set_foam_smoothness(amount : float) -> void:
 	mat_foam_smoothness = amount
 	set_materials("foam_smoothness", amount)
+
+
+func set_custom_shader(shader : Shader) -> void:
+	if adv_custom_shader == shader:
+		return
+	adv_custom_shader = shader
+	if adv_custom_shader == null:
+		_material.shader = load(DEFAULT_SHADER_PATH)
+	else:
+		_material.shader = adv_custom_shader
+		
+		if Engine.editor_hint:
+			# Ability to fork default shader
+			if shader.code == "":
+				shader.code = _default_shader.code
 
 
 func set_roughness(value : float) -> void:
@@ -514,9 +675,9 @@ func set_texture(texture : Texture) -> void:
 	set_materials("texture_water", texture)
 
 
-func set_tiling(value : float) -> void:
-	mat_tiling = value
-	set_materials("uv_tiling", value)
+func set_uv_scale(value : Vector3) -> void:
+	mat_uv_scale = value
+	set_materials("uv_scale", value)
 
 
 func set_normal_scale(value : float) -> void:
@@ -529,9 +690,39 @@ func set_clarity(value : float) -> void:
 	set_materials("clarity", value)
 
 
+func set_edge_fade(value : float) -> void:
+	mat_edge_fade = value
+	set_materials("edge_fade", value)
+
+
 func set_flowspeed(value : float) -> void:
 	mat_flow_speed = value
 	set_materials("flow_speed", value)
+
+
+func set_flow_base(value : float) -> void:
+	mat_flow_base_strength = value
+	set_materials("flow_base", value)
+
+
+func set_flow_steepness(value : float) -> void:
+	mat_flow_steepness_strength = value
+	set_materials("flow_steepness", value)
+
+
+func set_flow_distance(value : float) -> void:
+	mat_flow_distance_strength = value
+	set_materials("flow_distance", value)
+
+
+func set_flow_pressure(value : float) -> void:
+	mat_flow_pressure_strength = value
+	set_materials("flow_pressure", value)
+
+
+func set_flow_max(value : float) -> void:
+	mat_flow_max_strength = value
+	set_materials("flow_max", value)
 
 
 func set_lod0_distance(value : float) -> void:
@@ -560,7 +751,7 @@ func _generate_flowmap(flowmap_resolution : float) -> void:
 	yield(get_tree(), "idle_frame")
 	
 	image.lock()
-	image = yield(WaterHelperMethods.generate_collisionmap(image, _mesh_instance, _steps, shape_step_length_divs, shape_step_width_divs, self), "completed")
+	image = yield(WaterHelperMethods.generate_collisionmap(image, _mesh_instance, baking_raycast_distance, _steps, shape_step_length_divs, shape_step_width_divs, self), "completed")
 	image.unlock()
 	
 	emit_signal("progress_notified", 0.95, "Applying filters (" + str(flowmap_resolution) + "x" + str(flowmap_resolution) + ")")
@@ -573,8 +764,8 @@ func _generate_flowmap(flowmap_resolution : float) -> void:
 	
 	image = WaterHelperMethods.add_margins(image, flowmap_resolution, margin)
 
-	var texture_to_dilate := ImageTexture.new()
-	texture_to_dilate.create_from_image(image)
+	var collision_with_margins := ImageTexture.new()
+	collision_with_margins.create_from_image(image)
 
 	# Create correctly tiling noise for A channel
 	var noise_texture := load(NOISE_TEXTURE_PATH) as Texture
@@ -594,27 +785,36 @@ func _generate_flowmap(flowmap_resolution : float) -> void:
 
 	self.add_child(renderer_instance)
 
+	var flow_pressure_blur_amount = 0.04 / float(grid_side) * flowmap_resolution
 	var dilate_amount = baking_dilate / float(grid_side) 
 	var flowmap_blur_amount = baking_flowmap_blur / float(grid_side) * flowmap_resolution
 	var foam_offset_amount = baking_foam_offset / float(grid_side)
 	var foam_blur_amount = baking_foam_blur / float(grid_side) * flowmap_resolution
 	
-	var dilated_texture = yield(renderer_instance.apply_dilate(texture_to_dilate, dilate_amount, flowmap_resolution), "completed")
+	var flow_pressure_map = yield(renderer_instance.apply_flow_pressure(collision_with_margins, flowmap_resolution, grid_side + 2.0), "completed")
+	var blurred_flow_pressure_map = yield(renderer_instance.apply_vertical_blur(flow_pressure_map, flow_pressure_blur_amount, flowmap_resolution), "completed")
+	var dilated_texture = yield(renderer_instance.apply_dilate(collision_with_margins, dilate_amount, flowmap_resolution), "completed")
 	var normal_map = yield(renderer_instance.apply_normal(dilated_texture, flowmap_resolution), "completed")
 	var flow_map = yield(renderer_instance.apply_normal_to_flow(normal_map, flowmap_resolution), "completed")
 	var blurred_flow_map = yield(renderer_instance.apply_blur(flow_map, flowmap_blur_amount, flowmap_resolution), "completed")
 	var foam_map = yield(renderer_instance.apply_foam(dilated_texture, foam_offset_amount, baking_foam_cutoff, flowmap_resolution), "completed")
 	var blurred_foam_map = yield(renderer_instance.apply_blur(foam_map, foam_blur_amount, flowmap_resolution), "completed")
-	var combined_map = yield(renderer_instance.apply_combine(blurred_flow_map, blurred_foam_map, tiled_noise), "completed")
+	var flow_foam_noise_img = yield(renderer_instance.apply_combine(blurred_flow_map, blurred_flow_map, blurred_foam_map, tiled_noise), "completed")
+	var dist_pressure_img = yield(renderer_instance.apply_combine(dilated_texture, blurred_flow_pressure_map), "completed")
 
 	remove_child(renderer_instance) # cleanup
 
-	var flow_foam_noise_result = combined_map.get_data().get_rect(Rect2(margin, margin, flowmap_resolution, flowmap_resolution))
+	var flow_foam_noise_result = flow_foam_noise_img.get_data().get_rect(Rect2(margin, margin, flowmap_resolution, flowmap_resolution))
+	var dist_pressure_result = dist_pressure_img.get_data().get_rect(Rect2(margin, margin, flowmap_resolution, flowmap_resolution))
 
 	_flow_foam_noise = ImageTexture.new()
 	_flow_foam_noise.create_from_image(flow_foam_noise_result, 5)
 	
+	_dist_pressure = ImageTexture.new()
+	_dist_pressure.create_from_image(dist_pressure_result, 5)
+	
 	set_materials("flowmap", _flow_foam_noise)
+	set_materials("distmap", _dist_pressure)
 	set_materials("valid_flowmap", true)
 	valid_flowmap = true;
 	emit_signal("progress_notified", 100.0, "finished")

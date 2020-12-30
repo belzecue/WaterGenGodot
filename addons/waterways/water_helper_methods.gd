@@ -97,17 +97,18 @@ static func generate_river_mesh(curve : Curve3D, steps : int, step_length_divs :
 			st.add_index( (step * (step_width_divs + 1)) + w_sub)
 			st.add_index( (step * (step_width_divs + 1)) + w_sub + 1)
 			st.add_index( (step * (step_width_divs + 1)) + w_sub + 2 + step_width_divs - 1)
-
+			
 			st.add_index( (step * (step_width_divs + 1)) + w_sub + 1)
 			st.add_index( (step * (step_width_divs + 1)) + w_sub + 3 + step_width_divs - 1)
 			st.add_index( (step * (step_width_divs + 1)) + w_sub + 2 + step_width_divs - 1)
-
+		
 	st.generate_normals()
 	st.generate_tangents()
 	st.deindex()
 
 	var mesh := ArrayMesh.new()
 	var mesh2 :=  ArrayMesh.new()
+	var mesh3 := ArrayMesh.new()
 	mesh = st.commit()
 
 	var mdt := MeshDataTool.new()
@@ -149,11 +150,16 @@ static func generate_river_mesh(curve : Curve3D, steps : int, step_length_divs :
 		x_offset += grid_side_length
 	
 	mdt.commit_to_surface(mesh2)
-	return mesh2
+	st.clear()
+	st.create_from(mesh2, 0)
+	st.index()
+	mesh3 = st.commit()
+	return mesh3
 
 
-static func generate_collisionmap(image : Image, mesh_instance : MeshInstance, steps : int, step_length_divs : int, step_width_divs : int, river) -> Image:
+static func generate_collisionmap(image : Image, mesh_instance : MeshInstance, raycast_dist : float, steps : int, step_length_divs : int, step_width_divs : int, river) -> Image:
 	var space_state := mesh_instance.get_world().direct_space_state
+	
 	var uv2 := mesh_instance.mesh.surface_get_arrays(0)[5] as PoolVector2Array
 	var verts := mesh_instance.mesh.surface_get_arrays(0)[0] as PoolVector3Array
 	# We need to move the verts into world space
@@ -207,7 +213,7 @@ static func generate_collisionmap(image : Image, mesh_instance : MeshInstance, s
 				var vert2 : Vector3 = world_verts[correct_triangle[2]]
 				
 				var real_pos := bary2cart(vert0, vert1, vert2, baryatric_coords)
-				var real_pos_up := real_pos + Vector3.UP * 10.0
+				var real_pos_up := real_pos + Vector3.UP * raycast_dist
 				
 				var result_up = space_state.intersect_ray(real_pos, real_pos_up)
 				var result_down = space_state.intersect_ray(real_pos_up, real_pos)
@@ -221,6 +227,18 @@ static func generate_collisionmap(image : Image, mesh_instance : MeshInstance, s
 					if not up_hit_frontface and result_down:
 						image.set_pixel(x, y, Color(1.0, 1.0, 1.0))
 	return image
+
+
+# first parameter should be an array for all the water objects, just a single 
+# river for now
+static func generate_heightmap(river, resolution : float):
+	# so what do we need to do here.
+	# take the river, put it into it's own scene.
+	# figure out the rivers AABB
+	# set up a camera that covers the AABB
+	# render out the depth from the camera
+	# give back the depth map and some info on the AABB and depth scale
+	pass
 
 
 # Adds offset margins so filters will correctly extend across UV edges

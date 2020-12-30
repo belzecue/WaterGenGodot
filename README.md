@@ -1,6 +1,6 @@
 # Waterways Add-on for Godot Engine
 
-![image](https://user-images.githubusercontent.com/4955051/102626754-21c16680-413f-11eb-8dd8-f5a31d428fd1.png)
+[![Waterways Add-on for Godot v0.1.0 Released - Feature Overview](https://raw.githubusercontent.com/Arnklit/media/main/WaterWaysAdd-on/screenshot01.jpg)](https://youtu.be/t54jUPFtRO8 "Waterways Add-on for Godot v0.1.0 Released - Feature Overview")
 
 A tool to generate river meshes with flow and foam maps based on bezier curves. Try out the [demo project](https://github.com/Arnklit/WaterGenGodotDemo) for an example.
 
@@ -8,7 +8,7 @@ A tool to generate river meshes with flow and foam maps based on bezier curves. 
 
 [Patreon](https://www.patreon.com/arnklit)
 
-Instalation
+Installation
 -----------
 Copy the folder addons/waterways into your project and activate the add-on from the Project -> Project Settings... -> Plugins menu.
 
@@ -86,7 +86,7 @@ Current Limitations
 
 Acknowledgements
 ---------------
-* A special thanks to my first ever patron *Marcus Richter* for his support.
+* Thanks to my patrons *Marcus Richter, Dmitriy Keane, spacechace0 and Johannes Wuesnch* for all their support.
 
 Several people in the Godot community have helped me out with this.
 * *Zylann* has been really helpful, both with any issues I've had working on terrains, but also in that whenever I don't know how to do something in a plugin I generally find the answer somewhere in his code.
