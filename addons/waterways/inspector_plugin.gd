@@ -1,3 +1,5 @@
+# Copyright © 2021 Kasper Arnklit Frandsen - MIT License
+# See `LICENSE.md` included in the source distribution for details.
 extends EditorInspectorPlugin
 
 const RiverManager = preload("res://addons/waterways/river_manager.gd")
@@ -9,7 +11,6 @@ func can_handle(object: Object) -> bool:
 
 
 func parse_property(object: Object, type: int, path: String, hint: int, hint_text: String, usage: int) -> bool:
-	
 	if type == TYPE_COLOR_ARRAY:
 		var editor_property = _editor.new()
 		editor_property.set_node(object)
